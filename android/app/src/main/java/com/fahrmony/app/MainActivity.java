@@ -20,7 +20,7 @@ public class MainActivity extends BridgeActivity {
     private void handleChainLaunch(Intent intent) {
         if (intent == null) return;
         String chainPkg = intent.getStringExtra("EXTRA_CHAIN_LAUNCH_PKG");
-        if (chainPkg != null && !chainPkg.trim().isEmpty()) {
+        if (chainPkg != null && FahrmonyMediaManager.INSTANCE.getKNOWN_PACKAGES().containsKey(chainPkg)) {
             intent.removeExtra("EXTRA_CHAIN_LAUNCH_PKG");
             new Handler(Looper.getMainLooper()).postDelayed(() -> {
                 try {

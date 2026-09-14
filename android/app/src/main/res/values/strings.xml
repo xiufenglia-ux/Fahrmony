@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Fahrmony</string>
+    <string name="app_name">Fahrmony 个人版</string>
     <string name="title_activity_main">Fahrmony</string>
     <string name="package_name">com.fahrmony.app</string>
     <string name="custom_url_scheme">com.fahrmony.app</string>

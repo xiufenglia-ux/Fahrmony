@@ -43,7 +43,7 @@ export interface MediaSessionChangedEvent {
 export interface BridgeLogEntry {
   id: string;
   timestamp: number;
-  type: 'IM_NOTIFICATION' | 'MEDIA_SESSION' | 'AUTO_PLAY' | 'SYSTEM';
+  type: 'IM_NOTIFICATION' | 'MEDIA_SESSION' | 'AUTO_PLAY' | 'SYSTEM' | 'BRIDGE_DIAGNOSTIC';
   tag: string;
   title: string;
   content: string;
@@ -199,8 +199,8 @@ const FahrmonyPlugin = registerPlugin<FahrmonyPluginInterface>('FahrmonyPlugin',
       hasUpdate: false,
       currentVersion: 'v1.1.5',
       latestVersion: 'v1.1.5',
-      downloadUrl: 'https://github.com/nexen33/Fahrmony/releases/latest',
-      releaseUrl: 'https://github.com/nexen33/Fahrmony/releases/latest',
+      downloadUrl: 'https://github.com/xiufenglia-ux/Fahrmony/releases/latest',
+      releaseUrl: 'https://github.com/xiufenglia-ux/Fahrmony/releases/latest',
       changelog: '当前已是最新版本',
     }),
     addListener: async () => ({

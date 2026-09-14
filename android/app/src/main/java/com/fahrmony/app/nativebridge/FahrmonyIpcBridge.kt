@@ -59,6 +59,7 @@ object FahrmonyIpcBridge {
 
     private class ServerHandler(private val context: Context) : Handler(Looper.getMainLooper()) {
         override fun handleMessage(msg: Message) {
+            if (msg.sendingUid != android.os.Process.myUid()) return
             when (msg.what) {
                 MSG_REGISTER_CLIENT -> {
                     clientMessenger = msg.replyTo
@@ -90,6 +91,7 @@ object FahrmonyIpcBridge {
                         try {
                             val json = org.json.JSONObject(jsonStr)
                             FahrmonyConfig.updateConfig(context, json)
+                            FahrmonyNotificationActions.clear(context)
                             val newDefault = json.optString("defaultPlayerPackage", "")
                             if (newDefault.isNotBlank()) {
                                 FahrmonyMediaManager.onDefaultPlayerChanged(newDefault)
@@ -133,6 +135,7 @@ object FahrmonyIpcBridge {
             val msg = Message.obtain(null, MSG_SYNC_STATE).apply {
                 data = Bundle().apply {
                     putParcelableArrayList("sessions", sessionBundles)
+                    putParcelableArrayList("diagnostics", ArrayList(FahrmonyLogBuffer.getLogs().filter { it.type == "BRIDGE_DIAGNOSTIC" }.take(25).map { logToBundle(it) }))
                     putBoolean("isCarConnected", FahrmonyMediaBrowserService.isCarConnected)
                 }
             }
@@ -187,9 +190,17 @@ object FahrmonyIpcBridge {
 
     private val clientMessengerInstance = Messenger(object : Handler(Looper.getMainLooper()) {
         override fun handleMessage(msg: Message) {
+            if (msg.sendingUid != android.os.Process.myUid()) return
             when (msg.what) {
                 MSG_SYNC_STATE -> {
                     val bundle = msg.data
+                    @Suppress("DEPRECATION")
+                    val diagnostics = bundle.getParcelableArrayList<Bundle>("diagnostics").orEmpty()
+                    val knownLogIds = FahrmonyLogBuffer.getLogs().map { it.id }.toSet()
+                    diagnostics.asReversed().forEach { data ->
+                        val entry = bundleToLog(data)
+                        if (entry.id !in knownLogIds) FahrmonyLogBuffer.addEntry(entry)
+                    }
                     if (bundle.containsKey("isCarConnected")) {
                         val newConn = bundle.getBoolean("isCarConnected", false)
                         val changed = (isCarConnectedCache != newConn)

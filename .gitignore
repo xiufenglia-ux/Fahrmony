@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.gradle/
+build/
+local.properties
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.apk
+*.apk.idsig
+.env
+.env.local
+android/capacitor-cordova-android-plugins/

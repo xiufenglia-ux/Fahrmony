@@ -149,7 +149,9 @@ class FahrmonyMediaBrowserService : MediaBrowserServiceCompat() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        MediaButtonReceiver.handleIntent(mediaSession, intent)
+        // Exported browser services may also be started by arbitrary apps. Never
+        // interpret a start Intent as a playback command. Modern Auto controls
+        // arrive through the authenticated MediaSession, not this entry point.
         return START_STICKY
     }
 
@@ -177,10 +179,15 @@ class FahrmonyMediaBrowserService : MediaBrowserServiceCompat() {
         clientPackageName: String,
         clientUid: Int,
         rootHints: Bundle?
-    ): BrowserRoot {
+    ): BrowserRoot? {
+        val packages = packageManager.getPackagesForUid(clientUid) ?: return null
+        if (clientPackageName !in packages) return null
         val isRealCar = clientPackageName == "com.google.android.projection.gearhead" ||
-                        clientPackageName == "com.google.android.gms" ||
-                        clientPackageName.contains("car", ignoreCase = true)
+                        clientPackageName == "com.google.android.gms"
+        val trusted = clientUid == android.os.Process.myUid() ||
+            androidx.media.MediaSessionManager.getSessionManager(this).isTrustedForMediaControl(
+                androidx.media.MediaSessionManager.RemoteUserInfo(clientPackageName, -1, clientUid))
+        if (!trusted) return null
         if (isRealCar) {
             isCarConnected = true
             FahrmonyIpcBridge.notifyCarConnectedChanged(true)

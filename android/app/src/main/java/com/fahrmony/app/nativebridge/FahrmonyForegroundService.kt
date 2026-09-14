@@ -50,6 +50,12 @@ class FahrmonyForegroundService : Service() {
         return START_STICKY
     }
 
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        // Android 15+ limits dataSync foreground services. Stop before the system ANRs.
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
     override fun onBind(intent: Intent?): IBinder? {
         return FahrmonyIpcBridge.getServerBinder(applicationContext)
     }

@@ -97,6 +97,8 @@ object FahrmonyConfig {
         }
     }
 
+    fun isPreviewHidden(context: Context) = getPrefs(context).getBoolean(KEY_HIDE_PREVIEW, false)
+
     fun isFilterGroupChats(context: Context): Boolean {
         return getPrefs(context).getBoolean(KEY_FILTER_GROUP, false)
     }
