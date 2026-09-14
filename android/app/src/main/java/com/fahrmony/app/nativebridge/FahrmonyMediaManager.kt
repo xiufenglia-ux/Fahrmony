@@ -1647,7 +1647,7 @@ object FahrmonyMediaManager {
         FahrmonyLogBuffer.addLog("CAR_DISCONNECT", "车机断连", "收到物理断连事件", "执行手机端物理静音与全播放器双脉冲暂停")
 
         // 1. 手机端物理级内核音频焦点抢占 (直接从 OS 音频驱动层剥夺焦点并强行静音，对系统所有播放器通用生效)
-        appContext?.let { requestTransientAudioFocusMute(it) }
+        // Preserve other apps' audio focus, including Spotify, on disconnection.
 
         // 2. 跨进程 IPC 全量下发暂停：遍历所有活跃会话，确保所有播放器无一遗漏地进入暂停态
         pauseAllPlayers()

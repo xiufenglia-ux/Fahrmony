@@ -1456,6 +1456,25 @@ export default function App() {
                   </div>
                 </div>
 
+                <div style={{ margin: '0 16px 20px', padding: 18, borderRadius: 18, background: 'var(--bg-card)', color: 'var(--text-primary)', lineHeight: 1.7 }}>
+                  <strong>微信消息与通话 · 个人测试版</strong>
+                  <p>通过 Android Auto 展示并朗读微信通知。聊天语音只能显示微信提供的文字摘要，不能播放语音消息文件。</p>
+                  <p>仅在原通知提供可用的快捷回复接口时显示回复入口；未提供时只读。转交成功不等于微信已送达。</p>
+                  <p>来电提醒仅在微信提供相应按钮时支持“接听 / 拒接 / 挂断 / 回拨”指令。没有按钮时只提醒；不支持任意联系人主动拨号，不接管通话音频。</p>
+                  <p>1.1.6 实测可查看消息，但未实现车机接听。此版增加旧式车载回复接口识别，保留已读修复与诊断；弹窗、回复和通话仍需停车实测。</p>
+                  <label style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
+                    隐藏通知发送者和正文（车机也不朗读正文）
+                    <Switch checked={!!appConfig.hidePreviewContent} onChange={(checked) => updateConfig({ hidePreviewContent: checked })} />
+                  </label>
+                </div>
+
+                <div style={{ margin: '0 16px 20px', padding: 18, borderRadius: 18, background: 'var(--bg-card)', lineHeight: 1.7 }}>
+                  <strong>通知诊断（不含联系人和消息正文）</strong>
+                  <p>提醒级别 4 为高优先级，3 或以下可能不弹窗。可用操作为 0 时不能回复或控制通话。Android Auto 仍决定车机是否显示弹窗。</p>
+                  {logs.filter(l => l.type === 'BRIDGE_DIAGNOSTIC').slice(0, 15).map(l => (
+                    <p key={l.id} style={{ fontSize: 13, overflowWrap: 'anywhere' }}>{new Date(l.timestamp).toLocaleTimeString()} · {l.title}<br />{l.content}</p>
+                  ))}
+                </div>
                 {/* 通讯记录列表 */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 16px', marginBottom: '12px' }}>
                   <div style={{ fontSize: '16px', fontWeight: 600, color: 'var(--text-secondary)' }}>
@@ -2005,7 +2024,7 @@ export default function App() {
                       Fahrmony
                     </div>
                     <div style={{ fontSize: '15px', color: 'var(--accent-primary)', fontWeight: 600, marginTop: '2px' }}>
-                      v1.1.5
+                      v1.1.8-personal
                     </div>
                   </div>
 

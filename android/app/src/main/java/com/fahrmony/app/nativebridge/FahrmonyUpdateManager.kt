@@ -27,8 +27,8 @@ import java.util.concurrent.Executors
  */
 object FahrmonyUpdateManager {
 
-    private const val GITHUB_API_LATEST = "https://api.github.com/repos/nexen33/Fahrmony/releases/latest"
-    private const val GITHUB_RELEASE_PAGE = "https://github.com/nexen33/Fahrmony/releases/latest"
+    private const val GITHUB_API_LATEST = "https://api.github.com/repos/xiufenglia-ux/Fahrmony/releases/latest"
+    private const val GITHUB_RELEASE_PAGE = "https://github.com/xiufenglia-ux/Fahrmony/releases/latest"
     private const val PREFS_NAME = "fahrmony_update_prefs"
     private const val KEY_LAST_CHECK_DATE = "last_check_date"
     private const val KEY_IGNORED_VERSION = "ignored_version"
@@ -179,13 +179,14 @@ object FahrmonyUpdateManager {
                 var line: String?
                 while (reader.readLine().also { line = it } != null) {
                     sb.append(line)
+                    if (sb.length > 262144) return UpdateInfo(false, currentVersion, currentVersion, GITHUB_RELEASE_PAGE, GITHUB_RELEASE_PAGE, "")
                 }
                 reader.close()
 
                 val json = JSONObject(sb.toString())
                 val tagName = json.optString("tag_name", "")
                 val body = json.optString("body", "")
-                val htmlUrl = json.optString("html_url", GITHUB_RELEASE_PAGE)
+                val htmlUrl = GITHUB_RELEASE_PAGE
 
                 var directApkUrl = htmlUrl
                 val assets = json.optJSONArray("assets")
@@ -194,7 +195,7 @@ object FahrmonyUpdateManager {
                         val asset = assets.optJSONObject(i) ?: continue
                         val name = asset.optString("name", "")
                         if (name.endsWith(".apk", ignoreCase = true)) {
-                            directApkUrl = asset.optString("browser_download_url", htmlUrl)
+                            directApkUrl = htmlUrl
                             break
                         }
                     }

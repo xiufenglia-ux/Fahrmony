@@ -50,6 +50,7 @@ class FahrmonyNotificationListener : NotificationListenerService() {
     override fun onListenerDisconnected() {
         super.onListenerDisconnected()
         isConnected = false
+        FahrmonyNotificationActions.clear(this)
         FahrmonyLogBuffer.addLog("SYSTEM", "NotificationListener", "服务已断开", "通知监听权被系统解绑")
     }
 
@@ -69,11 +70,13 @@ class FahrmonyNotificationListener : NotificationListenerService() {
             sbn.notification?.extras?.getParcelable("android.mediaSession")
         }
 
+        if (packageName !in FahrmonyMediaManager.KNOWN_PACKAGES && packageName !in TARGET_PACKAGES) return
+
         // 提取状态栏通知的真实高清专辑封面 (基于 Android 官方规范 Icon.loadDrawable 逆向解码)
         var notificationArtwork: Bitmap? = null
         try {
             val icon = sbn.notification?.getLargeIcon()
-            if (icon != null) {
+            if (icon != null && packageName in FahrmonyMediaManager.KNOWN_PACKAGES) {
                 val drawable = icon.loadDrawable(applicationContext)
                 if (drawable != null) {
                     notificationArtwork = drawableToBitmap(drawable)
@@ -91,7 +94,12 @@ class FahrmonyNotificationListener : NotificationListenerService() {
         val appName = TARGET_PACKAGES[packageName] ?: return
         
         // 校验用户是否在设置中启用了该应用的通知播报
-        if (!FahrmonyConfig.isAppEnabled(applicationContext, packageName)) return
+        if (!FahrmonyConfig.isAppEnabled(applicationContext, packageName)) {
+            FahrmonyNotificationActions.remove(this, sbn.key)
+            return
+        }
+        if (FahrmonyNotificationActions.forwardCall(this, sbn)) return
+        if ((sbn.notification.flags and android.app.Notification.FLAG_GROUP_SUMMARY) != 0) return
 
         val extras = sbn.notification?.extras ?: return
 
@@ -126,11 +134,16 @@ class FahrmonyNotificationListener : NotificationListenerService() {
             tag = appName,
             title = parsedMsg.senderName.ifBlank { rawTitle.ifBlank { "新消息" } },
             content = parsedMsg.messageBody.ifBlank { rawText.ifBlank { "已收到消息（无文本摘要）" } },
-            rawExtras = extras.keySet().joinToString(", ") { "$it=${extras.get(it)}" }
+            rawExtras = null
         )
 
         // 转换为 Android Auto 规范的 MessagingStyle 单向只读通知 (支持单聊/群聊结构化呈现)
-        forwardToCarMessagingStyle(appName, packageName, parsedMsg, sbn.id)
+        forwardToCarMessagingStyle(appName, packageName, parsedMsg, sbn)
+    }
+
+    override fun onNotificationRemoved(sbn: StatusBarNotification?) {
+        super.onNotificationRemoved(sbn)
+        if (sbn != null) FahrmonyNotificationActions.remove(this, sbn.key)
     }
 
     private fun getAppIconBitmap(context: Context, packageName: String): Bitmap? {
@@ -152,14 +165,19 @@ class FahrmonyNotificationListener : NotificationListenerService() {
         appName: String,
         packageName: String,
         msg: ParsedImMessage,
-        originalId: Int
+        source: StatusBarNotification
     ) {
         val context = applicationContext
-        val notificationId = 10000 + (Math.abs(originalId) % 8000)
+        val notificationId = FahrmonyNotificationActions.ID
+        val replyCapability = FahrmonyNotificationActions.replyCapability(context, source)
+        val entry = FahrmonyNotificationActions.register(context, source,
+            replyCapability?.let { mapOf("reply" to it) } ?: emptyMap())
+        FahrmonyNotificationActions.diagnostic(context, source, false, entry.actions.size)
 
-        val senderName = msg.senderName
-        val messageBody = msg.messageBody
-        val conversationName = msg.conversationName
+        val hidden = FahrmonyConfig.isPreviewHidden(context)
+        val senderName = if (hidden) appName else msg.senderName.take(160)
+        val messageBody = if (hidden) "收到新消息，预览已隐藏" else msg.messageBody.take(2000)
+        val conversationName = if (hidden) appName else msg.conversationName.take(160)
         val isGroup = msg.isGroup
 
         // 遵循 i18n 规范构建发件人抬头，例如 "来自Lutz:" / "From Lutz:"
@@ -175,58 +193,15 @@ class FahrmonyNotificationListener : NotificationListenerService() {
         val senderPerson = senderPersonBuilder.build()
 
         // 严格遵循 Google 官方 Android Auto 规范：单聊严禁设置 ConversationTitle，确保大标题直截显示发信人抬头
-        val messagingStyle = NotificationCompat.MessagingStyle(senderPerson)
+        val messagingStyle = NotificationCompat.MessagingStyle(Person.Builder().setName("我").build())
             .setGroupConversation(isGroup)
             .addMessage(messageBody, System.currentTimeMillis(), senderPerson)
         if (isGroup) {
             messagingStyle.setConversationTitle(conversationName)
         }
 
-        // 1. 挂载“已读”语义动作 (用户在车机端可语音消除或点击已读)
-        val markAsReadIntent = Intent(context, FahrmonyMessageReceiver::class.java).apply {
-            action = FahrmonyMessageReceiver.ACTION_MARK_AS_READ
-            putExtra(FahrmonyMessageReceiver.EXTRA_NOTIFICATION_ID, notificationId)
-        }
-        val markAsReadPendingIntent = PendingIntent.getBroadcast(
-            context,
-            notificationId,
-            markAsReadIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        val markAsReadLabel = FahrmonyCarI18n.getMarkAsReadLabel(context)
-        val markAsReadAction = NotificationCompat.Action.Builder(
-            android.R.drawable.ic_menu_close_clear_cancel,
-            markAsReadLabel,
-            markAsReadPendingIntent
-        )
-            .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_MARK_AS_READ)
-            .setShowsUserInterface(false)
-            .build()
-
-        // 2. 严格对齐 Google 官方规范：挂载 Reply 语音回复动作与 RemoteInput 实体 (车机 HUD 浮窗准入硬性依赖)
-        val replyLabel = if (FahrmonyConfig.getLanguage(context).startsWith("en", ignoreCase = true)) "Reply" else "回复"
-        val remoteInput = RemoteInput.Builder(FahrmonyMessageReceiver.EXTRA_VOICE_REPLY)
-            .setLabel(replyLabel)
-            .build()
-        val replyIntent = Intent(context, FahrmonyMessageReceiver::class.java).apply {
-            action = FahrmonyMessageReceiver.ACTION_REPLY
-            putExtra(FahrmonyMessageReceiver.EXTRA_NOTIFICATION_ID, notificationId)
-        }
-        val replyPendingIntent = PendingIntent.getBroadcast(
-            context,
-            notificationId + 100000,
-            replyIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0)
-        )
-        val replyAction = NotificationCompat.Action.Builder(
-            android.R.drawable.ic_menu_send,
-            replyLabel,
-            replyPendingIntent
-        )
-            .addRemoteInput(remoteInput)
-            .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_REPLY)
-            .setShowsUserInterface(false)
-            .build()
+        val markAsReadAction = FahrmonyNotificationActions.dismissAction(context, entry)
+        val replyAction = FahrmonyNotificationActions.replyAction(context, entry)
 
         // 挂载 NotificationCompat.CarExtender 车规扩展，注入应用官方品牌主色与 96x96 高清头像
         val carExtender = NotificationCompat.CarExtender()
@@ -243,12 +218,15 @@ class FahrmonyNotificationListener : NotificationListenerService() {
             .setColor(0xFFFFFFFF.toInt())
             .setStyle(messagingStyle)
             .addAction(markAsReadAction)
-            .addAction(replyAction)
+            .apply { replyAction?.let { addAction(it) } }
             .extend(carExtender)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setAutoCancel(true)
-            .setOnlyAlertOnce(false)
+            .setDeleteIntent(FahrmonyNotificationActions.intent(context, entry, "dismiss"))
+            .setOnlyAlertOnce(!entry.alert).setNumber(1)
+            .setTimeoutAfter(600_000)
             .build()
 
         try {
@@ -258,7 +236,7 @@ class FahrmonyNotificationListener : NotificationListenerService() {
                 FahrmonyLogBuffer.addLog("SYSTEM", "IM_Bridge", "通知发送受限", "系统 POST_NOTIFICATIONS 权限未授予，无法推送到车机")
                 return
             }
-            notificationManager.notify(notificationId, notification)
+            notificationManager.notify(entry.tag, notificationId, notification)
             FahrmonyLogBuffer.addLog(
                 type = "IM_CAR_POST",
                 tag = appName,
@@ -288,9 +266,6 @@ class FahrmonyNotificationListener : NotificationListenerService() {
     }
 
     private fun drawableToBitmap(drawable: android.graphics.drawable.Drawable): Bitmap {
-        if (drawable is android.graphics.drawable.BitmapDrawable && drawable.bitmap != null) {
-            return drawable.bitmap
-        }
         val width = if (drawable.intrinsicWidth > 0) drawable.intrinsicWidth else 256
         val height = if (drawable.intrinsicHeight > 0) drawable.intrinsicHeight else 256
         val bitmap = Bitmap.createBitmap(width.coerceAtMost(512), height.coerceAtMost(512), Bitmap.Config.ARGB_8888)
